@@ -19,7 +19,8 @@ class Main:
 
     def run(self):
         problem_list = self.get_problem_list()
-        self.download_solutions(problem_list)
+        succeed_list, failed_list = self.download_solutions(problem_list)
+        self.finish(succeed_list, failed_list)
 
     def get_problem_list(self):
         user_problem_list = []
@@ -41,42 +42,52 @@ class Main:
         total = len(problem_list)
         success = 0
         fail = 0
-        success_list = []
+        succeed_list = []
         failed_list = []
 
-        for problem_id in problem_list:
-            error, solved_problem = self.network.analyze_problem(problem_id)
-            if error:
-                print(ERROR_FORMAT % ('analyze_problem', '%s (problem_id: %s)' % (solved_problem, problem_id)))
-                fail += 1
-                continue
+        try:
+            for problem_id in problem_list:
+                error, solved_problem = self.network.analyze_problem(problem_id)
+                if error:
+                    print(ERROR_FORMAT % ('analyze_problem', '%s (problem_id: %s)' % (solved_problem, problem_id)))
+                    fail += 1
+                    failed_list.append(problem_id)
+                    continue
 
-            dir_name = self.option.dir_name(solved_problem)
-            source_name = self.option.source_name(solved_problem)
-            error, ext = self.option.get_ext(solved_problem['language'])
-            if error:
-                print(ERROR_FORMAT % ('get_ext', ext))
-                fail += 1
-                continue
+                dir_name = self.option.dir_name(solved_problem)
+                source_name = self.option.source_name(solved_problem)
+                error, ext = self.option.get_ext(solved_problem['language'])
+                if error:
+                    print(ERROR_FORMAT % ('get_ext', ext))
+                    fail += 1
+                    failed_list.append(problem_id)
+                    continue
 
-            dir_tree = '%s/%s' % (DEFAULT_DOWNLOAD_DIR, dir_name)
-            file_path = '%s/%s%s%s' % (DEFAULT_DOWNLOAD_DIR, dir_name, source_name, ext)
-            if os.path.exists(file_path):
-                print(ERROR_FORMAT % ('file_path', 'Source already exists (problem_id: %s)' % (problem_id)))
-                fail += 1
-                continue
+                dir_tree = '%s/%s' % (DEFAULT_DOWNLOAD_DIR, dir_name)
+                file_path = '%s/%s%s%s' % (DEFAULT_DOWNLOAD_DIR, dir_name, source_name, ext)
+                if os.path.exists(file_path):
+                    print(ERROR_FORMAT % ('file_path', 'Source already exists (problem_id: %s)' % (problem_id)))
+                    fail += 1
+                    failed_list.append(problem_id)
+                    continue
        
-            error, source = self.network.download_source(solved_problem['submission_id'])
-            if error:
-                print(ERROR_FORMAT % ('download_source', '%s (problem_id: %s)' % (source, problem_id)))
-                fail += 1
-                continue
+                error, source = self.network.download_source(solved_problem['submission_id'])
+                if error:
+                    print(ERROR_FORMAT % ('download_source', '%s (problem_id: %s)' % (source, problem_id)))
+                    fail += 1
+                    failed_list.append(problem_id)
+                    continue
 
-            self.save_source(dir_tree, file_path, source)
-            print("* Saved successfully: '%s' (%d+%d/%d)" % (file_path, success, fail, total))
-            success += 1
-
-        print('\n* Total: %d, Success: %d, Fail: %d' % (success + fail, success, fail))
+                self.save_source(dir_tree, file_path, source)
+                print("* Saved successfully: '%s' (%d+%d/%d)" % (file_path, success, fail, total))
+                success += 1
+                succeed_list.append(problem_id)
+        except KeyboardInterrupt:
+            self.finish(succeed_list, failed_list)
+            raise KeyboardInterrupt
+            
+        print('\n* Total: %d, Success: %d, Fail: %d' % (total, success, fail))
+        return succeed_list, failed_list
 
     def save_source(self, dir_tree, file_path, source):
         if not os.path.isdir(dir_tree):
@@ -85,6 +96,21 @@ class Main:
         f = open(file_path, 'w')
         f.write(source)
         f.close()
+
+    def finish(self, succeed_list, failed_list):
+        time = str(datetime.datetime.now())
+
+        if len(succeed_list) != 0:
+            f = open('%s-%s.txt' % ('succeed', time), 'w')
+            for problem_id in succeed_list:
+                f.write(problem_id + '\n')
+            f.close()
+
+        if len(failed_list) != 0:
+            f = open('%s-%s.txt' % ('failed', time), 'w')
+            for problem_id in failed_list:
+                f.write(problem_id + '\n')
+            f.close()
 
 
 def set_options():
